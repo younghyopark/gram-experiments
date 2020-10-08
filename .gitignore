@@ -1,14 +1,7 @@
 .vscode/settings.json
-cifar-10-images/
-GTSRB/
-Imagenet/
-Imagenet_FIX/
-iSUN/
-LSUN/
-LSUN_FIX/
-LSUN_resize/
-mnist_png/
-pre_trained/
+*
+*/
+!.gitignore
 resnet_cifar10.pth
 resnet_cifar100.pth
 resnet_svhn.pth
