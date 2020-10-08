@@ -2,7 +2,7 @@
 *
 */
 !.gitignore
-!.gitkeep
+!pre_trained/.gitkeep
 resnet_cifar10.pth
 resnet_cifar100.pth
 resnet_svhn.pth
