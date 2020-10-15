@@ -191,7 +191,6 @@ class SVHNDataset(torch.utils.data.Dataset):
         return len(self.data_list)
         
 class TrafficDataset(torch.utils.data.Dataset):
-    def __init__(self, split, targets):
         """
             data_root(str) : Root directory of datasets (e.g. "/home/sr2/HDD2/Openset/")
             split_root(str) : Root directroy of split file (e.g. "/home/sr2/Hyeokjun/OOD-saige/datasets/data_split/")
