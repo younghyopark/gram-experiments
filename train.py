@@ -107,10 +107,7 @@ class SaigeDataset3(torch.utils.data.Dataset):
         rgb= img.convert("RGB")
         img = self.transform(rgb)
         return img, target
-    
-    def data(self):
-        return img.data
-       
+           
     def __len__(self):
         return len(self.data_list)
 
@@ -149,13 +146,50 @@ class MNISTDataset(torch.utils.data.Dataset):
         rgb= img.convert("RGB")
         img = self.transform(rgb)
         return img, target
-    
-    def data(self):
-        return img.data
-       
+           
     def __len__(self):
         return len(self.data_list)
 
+class SVHNDataset(torch.utils.data.Dataset):
+    def __init__(self, split, targets):
+        """
+            data_root(str) : Root directory of datasets (e.g. "/home/sr2/HDD2/Openset/")
+            split_root(str) : Root directroy of split file (e.g. "/home/sr2/Hyeokjun/OOD-saige/datasets/data_split/")
+            dataset(str) : dataset name
+            split(str) : ['train', 'valid', 'test']
+            transform(torchvision transform) : image transform
+            targets(list of str) : using targets
+        """
+        if split=='train':
+            self.data_root = './svhn_png/training'
+        else:
+            self.data_root = './svhn_png/testing'
+        # self.dataset = dataset
+        self.transform = trn.Compose([trn.Pad(2),trn.ToTensor()])
+        self.targets = targets
+        self.data_list = []
+        # f = open(os.path.join(split_root, split + ".txt"), "r")
+        for direc in os.listdir(self.data_root):
+            for image in os.listdir(os.path.join(self.data_root,direc)):
+                target=int(direc) # Transform target
+                if target in targets:
+                    target = targets.index(target)
+                    self.data_list.append((target, os.path.join(direc,image)))
+                    # print(target)
+                    # print(os.path.join(direc,image))
+
+                
+    def __getitem__(self, idx):
+        (target, fpath) = self.data_list[idx]
+        img = Image.open(os.path.join(self.data_root, fpath))
+        rgb= img.convert('L')
+        rgb= rgb.convert('rgb')
+        img = self.transform(rgb)
+        return img, target
+           
+    def __len__(self):
+        return len(self.data_list)
+        
 class TrafficDataset(torch.utils.data.Dataset):
     def __init__(self, split, targets):
         """
@@ -257,6 +291,10 @@ class SaigeDataset(torch.utils.data.Dataset):
     
     def __len__(self):
         return len(self.data_list)
+    
+    def __len__(self):
+        return len(self.data_list)
+
 
 # function for reading the images
 # arguments: path to the traffic sign data, for example './GTSRB/Training'
@@ -291,6 +329,19 @@ def getDataLoader(ds_cfg, dl_cfg, split, num_samples=10000):
                             batch_size=ds_cfg['batch_size'], shuffle=train,
                             num_workers=dl_cfg['num_workers'], pin_memory=dl_cfg['pin_memory'])
         print('Dataset {} ready.'.format(ds_cfg['dataset']))
+    elif 'mvtec' in ds_cfg['dataset']:
+        dataset = SaigeDataset(data_root=ds_cfg['data_root'],
+                                            split_root=ds_cfg['split_root'],
+                                            dataset=ds_cfg['dataset'],
+                                            split=split,
+                                            transform=transform,
+                                            targets=ds_cfg['targets'])
+        number= dataset.__len__()
+        loader = DataLoader(dataset,
+                            batch_size=ds_cfg['batch_size'], shuffle=train,
+                            num_workers=dl_cfg['num_workers'], pin_memory=dl_cfg['pin_memory'])
+        print('Dataset {} ready.'.format(ds_cfg['dataset']))
+
     elif ds_cfg['dataset'] in ['Traffic']:
         dataset = TrafficDataset(split=split,targets=ds_cfg['targets'])
         number= dataset.__len__()
@@ -305,6 +356,14 @@ def getDataLoader(ds_cfg, dl_cfg, split, num_samples=10000):
                             batch_size=ds_cfg['batch_size'], shuffle=train,
                             num_workers=dl_cfg['num_workers'], pin_memory=dl_cfg['pin_memory'])
         print('Dataset {} ready.'.format(ds_cfg['dataset']))
+    elif ds_cfg['dataset'] in ['SVHN']:
+        dataset = SVHNDataset(split=split,targets=ds_cfg['targets'])
+        number= dataset.__len__()
+        loader = DataLoader(dataset,
+                            batch_size=ds_cfg['batch_size'], shuffle=train,
+                            num_workers=dl_cfg['num_workers'], pin_memory=dl_cfg['pin_memory'])
+        print('Dataset {} ready.'.format(ds_cfg['dataset']))
+
     else :
         dataset = SaigeDataset3(data_root=ds_cfg['data_root'],
                                             split_root=ds_cfg['split_root'],
@@ -938,11 +997,19 @@ if __name__=="__main__":
     elif args.dataset=='MNIST':
         x=list(range(0,10))
         x.remove(int(args.out_target))
+    elif args.dataset=='mvtec_leather':
+        x=['color','cut','fold','glue','good_from_train','poke']
+        x.remove(str(args.out_target))
+    elif args.dataset=='SVHN':
+        x=list(range(1,11))
+        x.remove(int(args.out_target))
+
+    
 
     cfg['in_dataset']['targets']=x
-    cfg['in_dataset']['train_transform']=trn.Compose([trn.RandomHorizontalFlip(),trn.RandomCrop(224),trn.ToTensor(),trn.Normalize([0.3803,0.2553,0.5011],[0.2054,0.0844,0.036])])
-    cfg['in_dataset']['valid_transform']=trn.Compose([trn.CenterCrop(224),trn.ToTensor(),trn.Normalize([0.3803,0.2553,0.5011],[0.2054,0.0844,0.036])])
-    cfg['in_dataset']['data_root']='/HDD0/Openset/'+args.dataset
+    cfg['in_dataset']['train_transform']=trn.Compose([trn.RandomHorizontalFlip(),trn.ToTensor()])
+    cfg['in_dataset']['valid_transform']=trn.Compose([trn.ToTensor()])
+    cfg['in_dataset']['data_root']='/HDD0/Saige_Database/ETC/'+args.dataset+'/images'
     cfg['in_dataset']['split_root']='/HDD0/Openset/data_split/'+args.dataset
     cfg['in_dataset']['num_classes']=len(cfg['in_dataset']['targets'])
 

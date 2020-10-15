@@ -1,7 +1,7 @@
 .vscode/settings.json
-*
-*/
-!.gitignore
 resnet_cifar10.pth
 resnet_cifar100.pth
 resnet_svhn.pth
+*
+*/
+!.gitignore
