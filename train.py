@@ -37,6 +37,24 @@ import csv
 global global_cfg
 global_cfg = dict()
 
+def G_p(ob, p):
+    temp = ob.detach()
+    
+    temp = temp**p
+    temp = temp.reshape(temp.shape[0],temp.shape[1],-1)
+    temp = ((torch.matmul(temp,temp.transpose(dim0=2,dim1=1)))).sum(dim=2) 
+    temp = (temp.sign()*torch.abs(temp)**(1/p)).reshape(temp.shape[0],-1)
+    
+    return Variable(temp,requires_grad=True)
+
+def G_p_entire(ob, p):
+    temp = ob.detach()
+    temp = temp**p
+    temp = temp.reshape(temp.shape[0],temp.shape[1],-1)
+    temp = ((torch.matmul(temp,temp.transpose(dim0=2,dim1=1))))
+    temp = (temp.sign()*torch.abs(temp)**(1/p)).reshape(temp.shape[0],temp.shape[1],-1)
+    return temp
+
 
 # Implement new policy here!
 def lr_func_cosine(cfg, cur_epoch):
@@ -254,7 +272,7 @@ class TrafficDataset(torch.utils.data.Dataset):
         return len(self.labels)
 
 class LargeCIFAR10Dataset(torch.utils.data.Dataset):
-    def __init__(self, data_root, split_root, dataset, split, transform, targets):
+    def __init__(self, split, targets, size):
         """
             data_root(str) : Root directory of datasets (e.g. "/home/sr2/HDD2/Openset/")
             split_root(str) : Root directroy of split file (e.g. "/home/sr2/Hyeokjun/OOD-saige/datasets/data_split/")
@@ -263,14 +281,17 @@ class LargeCIFAR10Dataset(torch.utils.data.Dataset):
             transform(torchvision transform) : image transform
             targets(list of str) : using targets
         """
-        self.data_root = data_root
-        self.split_root = split_root
-        self.dataset = dataset
-        self.transform = transform
+        self.data_root = './Imagenet_flickr/imagenet_images/'
+        self.split_root = './data_split/LargeCIFAR10/'
+        if size=='large':
+            self.transform = trn.Compose([trn.Resize([256,256]),trn.CenterCrop([224,224]),trn.ToTensor()])
+        else:
+            self.transform = trn.Compose([trn.Resize([36,36]),trn.CenterCrop([32,32]),trn.ToTensor()])
+
         self.targets = targets
         
         self.data_list = []
-        f = open(os.path.join(split_root, split + ".txt"), "r")
+        f = open(os.path.join(self.split_root, split + ".txt"), "r")
         
         while True:
             line = f.readline()
@@ -285,16 +306,13 @@ class LargeCIFAR10Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         (target, fpath) = self.data_list[idx]
         img = Image.open(os.path.join(self.data_root, fpath))
-        img = self.transform(img)
+        rgb= img.convert("RGB")
+        img = self.transform(rgb)
         return img, target
        
     
     def __len__(self):
         return len(self.data_list)
-    
-    def __len__(self):
-        return len(self.data_list)
-
 
 class SaigeDataset(torch.utils.data.Dataset):
     def __init__(self, data_root, split_root, dataset, split, transform, targets):
@@ -342,7 +360,6 @@ class SaigeDataset(torch.utils.data.Dataset):
 # function for reading the images
 # arguments: path to the traffic sign data, for example './GTSRB/Training'
 # returns: list of images, list of corresponding labels 
-
 
 def getDataLoader(ds_cfg, dl_cfg, split, num_samples=10000):
     if split == 'train':
@@ -406,6 +423,76 @@ def getDataLoader(ds_cfg, dl_cfg, split, num_samples=10000):
                             batch_size=ds_cfg['batch_size'], shuffle=train,
                             num_workers=dl_cfg['num_workers'], pin_memory=dl_cfg['pin_memory'])
         print('Dataset {} ready.'.format(ds_cfg['dataset']))
+    elif ds_cfg['dataset'] in ['LargeCIFAR10']:
+        dataset = LargeCIFAR10Dataset(split=split,targets=ds_cfg['targets'],size=args.size)
+        number= dataset.__len__()
+        loader = DataLoader(dataset,
+                            batch_size=ds_cfg['batch_size'], shuffle=train,
+                            num_workers=dl_cfg['num_workers'], pin_memory=dl_cfg['pin_memory'])
+        print('Dataset {} ready.'.format(ds_cfg['dataset']))
+
+    elif ds_cfg['dataset'] in ['cifar10']:
+        batch_size = args.batch_size
+        mean = np.array([[0.4914, 0.4822, 0.4465]]).T
+
+        std = np.array([[0.2023, 0.1994, 0.2010]]).T
+        normalize = trn.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+
+        transform_train = trn.Compose([
+                trn.RandomCrop(32, padding=4),
+                trn.RandomHorizontalFlip(),
+                trn.ToTensor(),
+                normalize
+                
+            ])
+
+        transform_test = trn.Compose([
+                trn.CenterCrop(size=(32, 32)),
+                trn.ToTensor(),
+                normalize
+            ])
+
+        if split=='train':
+            loader = torch.utils.data.DataLoader(
+                datasets.CIFAR10('data', train=True, download=True,
+                            transform=transform_train),
+                batch_size=batch_size, shuffle=True)
+        else:
+            loader = torch.utils.data.DataLoader(
+                datasets.CIFAR10('data', train=False, transform=transform_test),
+                batch_size=batch_size)
+        return loader
+
+    elif ds_cfg['dataset'] in ['svhn']:
+        batch_size = args.batch_size
+        mean = np.array([[0.4914, 0.4822, 0.4465]]).T
+
+        std = np.array([[0.2023, 0.1994, 0.2010]]).T
+        normalize = trn.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+
+        transform_train = trn.Compose([
+                trn.RandomCrop(32, padding=4),
+                trn.RandomHorizontalFlip(),
+                trn.ToTensor(),
+                normalize
+                
+            ])
+        transform_test = trn.Compose([
+            trn.CenterCrop(size=(32, 32)),
+                trn.ToTensor(),
+                normalize
+            ])
+
+        if split=='train':
+            loader = torch.utils.data.DataLoader(
+                datasets.SVHN('data', split="train", download=True,
+                            transform=transform_train),
+                batch_size=batch_size, shuffle=True)
+        else:
+            loader = torch.utils.data.DataLoader(
+                datasets.SVHN('data', split="test", download=True, transform=transform_test),
+                batch_size=batch_size)
+        return loader
 
     else :
         dataset = SaigeDataset3(data_root=ds_cfg['data_root'],
@@ -445,17 +532,17 @@ class BasicBlock(nn.Module):
     def forward(self, x):
         t = self.conv1(x)
         out = F.relu(self.bn1(t))
-        # model.record(t)
-        # model.record(out)
+        model.record(t)
+        model.record(out)
         t = self.conv2(out)
         out = self.bn2(self.conv2(out))
-        # model.record(t)
-        # model.record(out)
+        model.record(t)
+        model.record(out)
         t = self.shortcut(x)
         out += t
-        # model.record(t)
+        model.record(t)
         out = F.relu(out)
-        # model.record(out)
+        model.record(out)
         
         return out#, out_list
 
@@ -519,9 +606,9 @@ class ResNet_128(nn.Module):
     def get_min_max(self, data, power):
         mins = []
         maxs = []
-        which_layer=6
-        for i in range(0,len(data),128):
-            batch = data[i:i+128].cuda()
+        which_layer=1
+        for i in range(0,len(data),256):
+            batch = data[i:i+256].cuda()
             feat_list = self.gram_feature_list(batch)
             for L1,feat_L in enumerate(feat_list):
                 if L1%which_layer==0:
@@ -545,39 +632,35 @@ class ResNet_128(nn.Module):
         
         return mins,maxs
 
-
     def get_min_max_real(self, data, power):
         mins = []
         maxs = []
-        which_layer=6
-        for i in range(0,len(data),128):
-            batch = data[i:i+128].cuda()
-            feat_list = self.gram_feature_list(batch)
-            for L1,feat_L in enumerate(feat_list):
-                if L1%which_layer==0:
-                    L=L1//which_layer
-                    if L==len(mins):
-                        mins.append([None]*len(power))
-                        maxs.append([None]*len(power))
+        batch = data.cuda()
+        feat_list = self.gram_feature_list(batch)
 
-                    for p,P in enumerate(power):
-                        g_p = G_p_entire(feat_L,P)
+        for L,feat_L in enumerate(feat_list):
+            if L==len(mins):
+                mins.append([None]*len(power))
+                maxs.append([None]*len(power))
 
-                        current_max = g_p.max(dim=0,keepdim=True)[0]
-                        current_min = g_p.min(dim=0,keepdim=True)[0]
+            for p,P in enumerate(power):
+                g_p = G_p_entire(feat_L,P)
 
-                        if mins[L][p] is None:
-                            mins[L][p] = current_min
-                            maxs[L][p] = current_max
-                        else:
-                            mins[L][p] = torch.min(current_min,mins[L][p])
-                            maxs[L][p] = torch.max(current_max,maxs[L][p])
+                current_max = g_p.max(dim=0,keepdim=True)[0]
+                current_min = g_p.min(dim=0,keepdim=True)[0]
+
+                if mins[L][p] is None:
+                    mins[L][p] = current_min
+                    maxs[L][p] = current_max
+                else:
+                    mins[L][p] = torch.min(current_min,mins[L][p])
+                    maxs[L][p] = torch.max(current_max,maxs[L][p])
         
         return mins,maxs
 
     def get_deviations(self,data,power,mins,maxs):
         deviations = []
-        which_layer=6
+        which_layer=1
         for i in range(0,len(data),128):            
             batch = data[i:i+128].cuda()
             feat_list = self.gram_feature_list(batch)
@@ -598,73 +681,20 @@ class ResNet_128(nn.Module):
         
         return deviations
 
-    def get_entire_Gram(self, data, power, mins_real, maxs_real, PRED):  
-        # gram_l_p=dict()
-        gram_inside=dict()
-
-        which_layer=6
-        count=0
-        print("Start Generating Gram Matrices")
-        for i in tqdm(range(0,len(data),128)):
-            batch = data[i:i+16].cuda()
-            feat_list = self.gram_feature_list(batch)
-            for L1,feat_L in enumerate(feat_list):
-                if L1%which_layer==0:
-                    L=L1//which_layer
-                    # gram_l_p[L] = dict()
-                    # gram_new[L] = dict()
-                    gram_inside[L]=dict()
-
-                    for p,P in enumerate(power):
-                        mins=mins_real[PRED][L][p]
-                        # mins=mins.view(1,-1)
-                        maxs=maxs_real[PRED][L][p]
-                        # maxs=maxs.view(1,-1)
-                        g_p=G_p_entire(feat_L,P)
-                        # g_p=g_p.view(128,-1)
-
-                        x=torch.zeros(128,g_p.size(1),g_p.size(2))
-                        for k in tqdm(range(g_p.size(0)),leave=False):
-                            for i in tqdm(range(g_p.size(1)),leave=False):
-                                for j in tqdm(range(g_p.size(2)),leave=False):
-                                    time.sleep(0.1)
-                                    if g_p[k][j][i]>mins_real[PRED][L][p][0][j][i] and g_p[k][j][i]<maxs_real[PRED][L][p][0][j][i]:
-                                        x[k][j][i]=1
-                        # x=x.view(128,mins_real[PRED][L][p].size(2),-1)
-                        if count==0:
-                            gram_inside[L][p]=x
-                            count=1
-                        else :
-                            gram_inside[L][p]=torch.cat((gram_inside[L][p],x),dim=0)
-                        
-                        # max_indices, maximum=G_p_entire(feat_L,P).view(G_p_entire(feat_L,P).size(0),-1).max(dim=1)
-                        # min_indices, minimum=G_p_entire(feat_L,P).view(G_p_entire(feat_L,P).size(0),-1).min(dim=1)
-                        # for index, x in enumerate(max_indices):
-                            
-                        #     gram_values[L][P]=torch.zeros(G_p_entire(feat_L,P).size(0),G_p_entire(feat_L,P).size(1),G_p_entire(feat_L,P).size(2))
-                        #     gram_values[L][P][x//G_p_entire(feat_L,P).size(1),x%G_p_entire(feat_L,P).size(1)]=maximum[index]
-                        #     gram_index[L][P][x//G_p_entire(feat_L,P).size(1),x%G_p_entire(feat_L,P).size(1)]=1
-                        #     gram_values[L][P]=gram_values[L][P].sum(dim=0)
-                        #     gram_index[L][P]=gram_index[L][P].sum(dim=0)
-
-                        # gram_entire_values[L][P]+=gram_values[L][P]
-                        # gram_entire_indexes[L][P]+=gram_indexes[L][P]
-
-        return gram_inside
-
-
 def summary_write(summary, writer):
     for key in summary.keys():
         writer.add_scalar(key, summary[key], summary['epoch'])
         
 
-def train_epoch_wo_outlier(model, optimizer, in_loader, loss_func, cur_epoch, op_cfg, writer):
+def train_epoch_wo_outlier(model, optimizer, optimizer_2,  in_loader, loss_func, cur_epoch, op_cfg, op_cfg_2, writer):
     global global_cfg
     model.train()
     avg_loss = 0
+    avg_celoss =0
+    avg_maxminloss=0
     correct = 0
     in_data_size = len(in_loader.dataset)
-    for cur_iter, in_set in enumerate(in_loader):
+    for cur_iter, in_set in enumerate(tqdm(in_loader)):
         #TODO: Dimension of in_set and out_set should be checked!
         # Data to GPU
         data = in_set[0]
@@ -677,37 +707,74 @@ def train_epoch_wo_outlier(model, optimizer, in_loader, loss_func, cur_epoch, op
         lr = get_lr_at_epoch(op_cfg, cur_epoch + float(cur_iter) / in_data_size)
         set_lr(optimizer, lr)
         
+        lr_2 = get_lr_at_epoch(op_cfg_2, cur_epoch + float(cur_iter) / in_data_size)
+        set_lr(optimizer_2, lr_2)
+
         # Foward propagation and Calculate loss
         logits = model(data)
+        mins,maxs=model.get_min_max(data,range(1,11))
         
         global_cfg['loss']['model'] = model
         global_cfg['loss']['data'] = data
-        loss_dict = loss_func(logits, targets, global_cfg['loss'])
-        loss = loss_dict['loss']
+        loss_dict = loss_func(logits, targets, global_cfg['loss'], mins, maxs)
+        
+        if cur_epoch%2 ==0:
+            loss = loss_dict['celoss']
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            # Calculate classifier error about in-distribution sample
+            num_topks_correct = metrics.topks_correct(logits[:len(targets)], targets, (1,))
+            [top1_correct] = [x for x in num_topks_correct]
+
+            # Add additional metrics!!!
+
+            loss, celoss, maxminloss, top1_correct = loss.item(), loss_dict['celoss'].item(), loss_dict['maxminloss'].item(), top1_correct.item()
+            avg_loss += loss
+            avg_celoss += celoss
+            avg_maxminloss += maxminloss
+            correct += top1_correct
 
         
-        # Back propagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            summary = {
+                    'avg_loss': avg_loss / in_data_size,
+                    'avg_celoss': avg_celoss / in_data_size,
+                    'avg_maxminloss': avg_maxminloss / in_data_size,
+                    'classifier_acc': correct / in_data_size,
+                    'lr': get_lr_at_epoch(op_cfg, cur_epoch),
+                    'epoch': cur_epoch,
+                }
+
+        else:
+            loss = loss_dict['maxminloss']
+            optimizer_2.zero_grad()
+            loss.backward()
+            optimizer_2.step()
+            
+            # Calculate classifier error about in-distribution sample
+            num_topks_correct = metrics.topks_correct(logits[:len(targets)], targets, (1,))
+            [top1_correct] = [x for x in num_topks_correct]
+
+            # Add additional metrics!!!
+
+            loss, celoss, maxminloss, top1_correct = loss.item(), loss_dict['celoss'].item(), loss_dict['maxminloss'].item(), top1_correct.item()
+            avg_loss += loss
+            avg_celoss += celoss
+            avg_maxminloss += maxminloss
+            correct += top1_correct
+
+            
+            summary = {
+                    'avg_loss': avg_loss / in_data_size,
+                    'avg_celoss': avg_celoss / in_data_size,
+                    'avg_maxminloss': avg_maxminloss / in_data_size,
+                    'classifier_acc': correct / in_data_size,
+                    'lr': get_lr_at_epoch(op_cfg_2, cur_epoch),
+                    'epoch': cur_epoch,
+                }
         
-        # Calculate classifier error about in-distribution sample
-        num_topks_correct = metrics.topks_correct(logits[:len(targets)], targets, (1,))
-        [top1_correct] = [x for x in num_topks_correct]
-        
-        # Add additional metrics!!!
-        
-        loss, top1_correct = loss.item(), top1_correct.item()
-        avg_loss += loss
-        correct += top1_correct
-    
-    summary = {
-        'avg_loss': avg_loss / in_data_size,
-        'classifier_acc': correct / in_data_size,
-        'lr': get_lr_at_epoch(op_cfg, cur_epoch),
-        'epoch': cur_epoch,
-    }
-    
+
     return summary
   
     
@@ -725,10 +792,11 @@ def valid_epoch_wo_outlier(model, in_loader, loss_func, cur_epoch):
         
         # Foward propagation and Calculate loss
         logits = model(data)
+        mins,maxs=model.get_min_max(data,range(1,11))
 
         global_cfg['loss']['model'] = model
         global_cfg['loss']['data'] = data
-        loss_dict = loss_func(logits, targets, global_cfg['loss'])
+        loss_dict = loss_func(logits, targets, global_cfg['loss'],mins,maxs)
         loss = loss_dict['loss']
         
         # Calculate classifier error about in-distribution sample
@@ -749,8 +817,6 @@ def valid_epoch_wo_outlier(model, in_loader, loss_func, cur_epoch):
     }
     
     return summary
-    
-
 
 def train_epoch_w_outlier(model, optimizer, in_loader, out_loader, loss_func, detector_func, cur_epoch, op_cfg, writer):
     global global_cfg
@@ -899,19 +965,13 @@ def getOptimizer(model, cfg):
             "Does not support '{}' optimizer".format(cfg['optimizer'])
         )
 
-def main(cfg):
+def main(model, cfg):
     global global_cfg
     # Reproducibility
     np.random.seed(cfg['seed'])
     torch.manual_seed(cfg['seed'])
     
     # Model & Optimizer
-    model = ResNet_128(BasicBlock, [3,4,6,3], num_classes=cfg['in_dataset']['num_classes'])
-    if args.pre_trained == 1:
-        model.pre_trained_load()
-        print("Loaded Imagenet Pretrained Model")
-    model.cuda()
-
     max_epoch = args.max_epoch
     optimizer_option = dict() 
     optimizer_option['max_epoch'] = max_epoch
@@ -924,6 +984,19 @@ def main(cfg):
     optimizer_option['warm_epoch'] = 0
     optimizer_option['warm_lr'] = 0.0
     optimizer = getOptimizer(model, optimizer_option)
+    
+    optimizer_option_2 = dict() 
+    optimizer_option_2['max_epoch'] = max_epoch
+    optimizer_option_2['optimizer'] = 'sgd'
+    optimizer_option_2['weight_decay'] = 0.0
+    optimizer_option_2['nesterov'] = True
+    optimizer_option_2['lr'] = 0.1
+    optimizer_option_2['momentum'] = 0.9
+    optimizer_option_2['policy'] = 'cosine'
+    optimizer_option_2['warm_epoch'] = 0
+    optimizer_option_2['warm_lr'] = 0.0
+    optimizer_2 = getOptimizer(model, optimizer_option_2)
+
 
     start_epoch = 1
     print('Model and Optimizer Loaded')
@@ -941,7 +1014,6 @@ def main(cfg):
     #         start_epoch = 1
     cudnn.benchmark = True
     
-    # Data Loader
     print("Loading Training Data")
     in_train_loader = getDataLoader(ds_cfg=cfg['in_dataset'],
                                     dl_cfg=cfg['dataloader'],
@@ -950,7 +1022,8 @@ def main(cfg):
     in_valid_loader = getDataLoader(ds_cfg=cfg['in_dataset'],
                                     dl_cfg=cfg['dataloader'],
                                     split="valid")
-        
+
+
     # Result directory and make tensorboard event file
     exp_dir = os.path.join('pre_trained',args.experiment)
     if os.path.exists(exp_dir) is False:
@@ -968,11 +1041,28 @@ def main(cfg):
         """
         Cross entropy loss when logits include outlier's logits also.(ignore outlier's)
         """
+        
         return {
             'loss': F.cross_entropy(logits[:len(targets)], targets),
         }
 
-    loss_func = cross_entropy_in_distribution
+    def maxmin_tight_clustering(logits, targets, cfg, maxs,mins):
+        """
+        Cross entropy loss when logits include outlier's logits also.(ignore outlier's)
+        """
+#         loss=0
+        loss = 0
+        for l in range(96):
+            for p in range(10):
+                difference = torch.norm(maxs[l][p]-mins[l][p],p=2)
+                loss+=difference/960
+        return {
+            'loss': loss/10+F.cross_entropy(logits[:len(targets)],targets),
+            'celoss': F.cross_entropy(logits[:len(targets)],targets),
+            'maxminloss': loss
+        }
+
+    loss_func = maxmin_tight_clustering
     global_cfg['loss'] = cfg['loss']
 
     
@@ -983,9 +1073,9 @@ def main(cfg):
     print("============Start training. Result will be saved in {}".format(exp_dir))
     
     for cur_epoch in range(start_epoch, max_epoch + 1):
-        train_summary = train_epoch_wo_outlier(model, optimizer, in_train_loader, loss_func, cur_epoch, optimizer_option, writer_train)
+        train_summary = train_epoch_wo_outlier(model, optimizer, optimizer_2, in_train_loader, loss_func, cur_epoch, optimizer_option, optimizer_option_2, writer_train)
         summary_write(summary=train_summary, writer=writer_train)
-        print("Training result=========Epoch [{}]/[{}]=========\nlr: {} | loss: {} | acc: {}".format(cur_epoch, args.max_epoch, train_summary['lr'], train_summary['avg_loss'], train_summary['classifier_acc']))
+        print("Training result=========Epoch [{}]/[{}]=========\nlr: {} | loss: {} | ce loss : {} | maxmin loss : {} |acc: {}".format(cur_epoch, args.max_epoch, train_summary['lr'], train_summary['avg_loss'],train_summary['avg_celoss'],train_summary['avg_maxminloss'],train_summary['classifier_acc']))
         
         
         if cur_epoch % cfg['valid_epoch'] == 0:
@@ -1009,6 +1099,9 @@ def main(cfg):
         
 
 if __name__=="__main__":
+    import time
+
+
     print("Setup Training...")
 
     parser=argparse.ArgumentParser()
@@ -1019,6 +1112,9 @@ if __name__=="__main__":
     parser.add_argument('--experiment')
     parser.add_argument('--max_epoch',type=int)
     parser.add_argument('--pre_trained',type=int, default=0)
+    parser.add_argument('--size',type=str, default=0)
+    parser.add_argument('--hyper', default=0)
+
     args=parser.parse_args()
     
     cfg = dict()
@@ -1028,6 +1124,9 @@ if __name__=="__main__":
     cfg['in_dataset']=dict()
     cfg['in_dataset']['dataset']=args.dataset
     cfg['in_dataset']['batch_size']=args.batch_size
+
+    lmbda = args.hyper
+
     if 'DAGM' in args.dataset:
         x=['1','2','3','4','5','6','7','8','9','10']
         x.remove(str(args.out_target))
@@ -1055,31 +1154,42 @@ if __name__=="__main__":
     elif args.dataset=='SVHN':
         x=list(range(1,11))
         x.remove(int(args.out_target))
-
-    
+    elif args.dataset=='LargeCIFAR10':
+        x=['airplane','bird','car','cat','deer','dog','frog','horse','ship','truck']
+        x.remove(str(args.out_target))
+    else:
+        x=None
 
     cfg['in_dataset']['targets']=x
     cfg['in_dataset']['train_transform']=trn.Compose([trn.RandomHorizontalFlip(),trn.ToTensor()])
     cfg['in_dataset']['valid_transform']=trn.Compose([trn.ToTensor()])
     cfg['in_dataset']['data_root']='/HDD0/Saige_Database/ETC/'+args.dataset+'/images'
     cfg['in_dataset']['split_root']='/HDD0/Openset/data_split/'+args.dataset
-    cfg['in_dataset']['num_classes']=len(cfg['in_dataset']['targets'])
+    if x is not None : cfg['in_dataset']['num_classes']=len(cfg['in_dataset']['targets'])
+    else: cfg['in_dataset']['num_classes']=10
 
     cfg['dataloader'] = dict()
-    cfg['dataloader']['num_workers'] = 4
+    cfg['dataloader']['num_workers'] = 8
     cfg['dataloader']['pin_memory'] = True
 
 
     cfg['valid_epoch']=args.valid_epoch
-    cfg['ckpt_epoch']=20
+    cfg['ckpt_epoch']=1 
 
     cfg['ngpu']=1
     cfg['seed']=0
 
     cfg['loss'] = dict()
-    cfg['loss']['loss'] = 'cross_entropy_in_distribution'
+    cfg['loss']['loss'] = 'maxmin_tight_clustering'
 
     print("In-distribution targets: ", cfg['in_dataset']['targets'])
     print("Num-Classes : {}".format(cfg['in_dataset']['num_classes']))
     
-    main(cfg)
+    model = ResNet_128(BasicBlock, [3,4,6,3], num_classes=cfg['in_dataset']['num_classes'])
+    if args.pre_trained == 1:
+        tm = torch.load('resnet_svhn.pth',map_location='cpu')
+        model.load_state_dict(tm)
+        print("loaded pretrained model")
+    model.cuda()
+
+    main(model, cfg)
