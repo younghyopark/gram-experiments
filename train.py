@@ -177,7 +177,7 @@ class SVHNDataset(torch.utils.data.Dataset):
             split(str) : ['train', 'valid', 'test']
             transform(torchvision transform) : image transform
             targets(list of str) : using targets
-        """
+        """  
         if split=='train':
             self.data_root = './svhn_png/training'
         else:
